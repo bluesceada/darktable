@@ -68,6 +68,7 @@ typedef struct dt_lib_import_metadata_t
   GtkWidget *frame;
   GtkWidget *recursive;
   GtkWidget *ignore_jpeg;
+  GtkWidget *use_solitary_jpeg;
   GtkWidget *expander;
   GtkWidget *apply_metadata;
   GtkWidget *presets;
@@ -372,7 +373,13 @@ static void _lib_import_presets_changed(GtkWidget *widget, dt_lib_import_metadat
   }
 }
 
-static GtkWidget *_lib_import_get_extra_widget(dt_lib_import_metadata_t *data, gboolean import_folder)
+static void _handle_jpeg_sensitivity_callback(GtkToggleButton *ignore_jpeg, GtkWidget *use_solitary_jpeg)
+{
+  gboolean toggle = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(ignore_jpeg));
+  gtk_widget_set_sensitive(use_solitary_jpeg, toggle);
+}
+
+static GtkWidget* _lib_import_get_extra_widget(dt_lib_import_metadata_t *data, gboolean import_folder)
 {
   // add extra lines to 'extra'. don't forget to destroy the widgets later.
   GtkWidget *expander = gtk_expander_new(_("import options"));
@@ -400,7 +407,7 @@ static GtkWidget *_lib_import_get_extra_widget(dt_lib_import_metadata_t *data, g
   gtk_widget_set_margin_top(extra, DT_PIXEL_APPLY_DPI(8));
   gtk_widget_set_margin_bottom(extra, DT_PIXEL_APPLY_DPI(8));
 
-  GtkWidget *recursive = NULL, *ignore_jpeg = NULL;
+  GtkWidget *recursive = NULL, *ignore_jpeg = NULL, *use_solitary_jpeg = NULL;
   if(import_folder == TRUE)
   {
     // recursive opening.
@@ -418,6 +425,15 @@ static GtkWidget *_lib_import_get_extra_widget(dt_lib_import_metadata_t *data, g
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(ignore_jpeg),
                                  dt_conf_get_bool("ui_last/import_ignore_jpegs"));
     gtk_box_pack_start(GTK_BOX(extra), ignore_jpeg, FALSE, FALSE, 0);
+
+    // ignore jpegs only if other files available
+    use_solitary_jpeg = gtk_check_button_new_with_label (_(" .. only when a corresponding raw, tiff, or similar exists."));
+    g_object_set(use_solitary_jpeg, "tooltip-text", _("import jpegs if there is no corresponding other file, like raw, tiff, or similar. This can be useful when importing a mixed collection of pictures."), NULL);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON (use_solitary_jpeg), dt_conf_get_bool("ui_last/import_use_solitary_jpegs"));
+    gtk_box_pack_start(GTK_BOX (extra), use_solitary_jpeg, FALSE, FALSE, 0);
+    if (!dt_conf_get_bool("ui_last/import_ignore_jpegs")) gtk_widget_set_sensitive(use_solitary_jpeg, FALSE);
+
+    g_signal_connect (G_OBJECT(ignore_jpeg), "toggled", G_CALLBACK (_handle_jpeg_sensitivity_callback), use_solitary_jpeg);
   }
 
   // default metadata
@@ -545,6 +561,7 @@ static GtkWidget *_lib_import_get_extra_widget(dt_lib_import_metadata_t *data, g
     data->frame = frame;
     data->recursive = recursive;
     data->ignore_jpeg = ignore_jpeg;
+    data->use_solitary_jpeg = use_solitary_jpeg;
     data->expander = expander;
     data->apply_metadata = apply_metadata;
     data->presets = presets;
@@ -574,6 +591,8 @@ static void _lib_import_evaluate_extra_widget(dt_lib_import_metadata_t *data, gb
                      gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(data->recursive)));
     dt_conf_set_bool("ui_last/import_ignore_jpegs",
                      gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(data->ignore_jpeg)));
+    dt_conf_set_bool("ui_last/import_use_solitary_jpegs",
+                     gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON (data->use_solitary_jpeg)));
   }
   dt_conf_set_bool("ui_last/import_options_expanded", gtk_expander_get_expanded(GTK_EXPANDER(data->expander)));
   dt_conf_set_bool("ui_last/import_apply_metadata",

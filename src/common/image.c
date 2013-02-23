@@ -707,7 +707,8 @@ uint32_t dt_image_import(const int32_t film_id, const char *filename, gboolean o
   if(!strcmp(cc, ".xmp")) return 0;
   char *ext = g_ascii_strdown(cc + 1, -1);
   if(override_ignore_jpegs == FALSE && (!strcmp(ext, "jpg") || !strcmp(ext, "jpeg"))
-     && dt_conf_get_bool("ui_last/import_ignore_jpegs"))
+     && dt_conf_get_bool("ui_last/import_ignore_jpegs")
+     && !dt_conf_get_bool("ui_last/import_use_solitary_jpegs"))
   {
     g_free(ext);
     return 0;
@@ -824,13 +825,23 @@ uint32_t dt_image_import(const int32_t film_id, const char *filename, gboolean o
       // if the group representative is a jpg, change group representative to this new imported image
       if(!strcmp(ext_lowercase, "jpg") || !strcmp(ext_lowercase, "jpeg"))
       {
-        other_img->group_id = id;
-        dt_image_cache_write_release(darktable.image_cache, other_img, DT_IMAGE_CACHE_SAFE);
         sqlite3_stmt *stmt3;
-        DT_DEBUG_SQLITE3_PREPARE_V2(dt_database_get(darktable.db),
-                                    "select id from images where group_id = ?1 and id != ?1", -1, &stmt3,
-                                    NULL);
-        DT_DEBUG_SQLITE3_BIND_INT(stmt3, 1, other_id);
+        // also: *remove* the jpeg again IF we dont want to import jpegs that also have other files with different extensions
+        if (dt_conf_get_bool("ui_last/import_use_solitary_jpegs") && dt_conf_get_bool("ui_last/import_ignore_jpegs"))
+        {
+          //dt_image_cache_read_release(darktable.image_cache, cother_img);
+          dt_image_cache_write_release(darktable.image_cache, other_img, DT_IMAGE_CACHE_SAFE);
+          dt_image_remove(other_id);
+        }
+        else
+        {
+          other_img->group_id = id;
+          dt_image_cache_write_release(darktable.image_cache, other_img, DT_IMAGE_CACHE_SAFE);
+          DT_DEBUG_SQLITE3_PREPARE_V2(dt_database_get(darktable.db),
+                                      "select id from images where group_id = ?1 and id != ?1", -1, &stmt3,
+                                      NULL);
+          DT_DEBUG_SQLITE3_BIND_INT(stmt3, 1, other_id);
+        }
         while(sqlite3_step(stmt3) == SQLITE_ROW)
         {
           other_id = sqlite3_column_int(stmt3, 0);
@@ -856,7 +867,7 @@ uint32_t dt_image_import(const int32_t film_id, const char *filename, gboolean o
     sqlite3_finalize(stmt2);
   }
   else
-  {
+  { // we are a jpeg
     sqlite3_stmt *stmt2;
     DT_DEBUG_SQLITE3_PREPARE_V2(
         dt_database_get(darktable.db),
@@ -865,7 +876,24 @@ uint32_t dt_image_import(const int32_t film_id, const char *filename, gboolean o
     DT_DEBUG_SQLITE3_BIND_TEXT(stmt2, 2, sql_pattern, -1, SQLITE_TRANSIENT);
     DT_DEBUG_SQLITE3_BIND_INT(stmt2, 3, id);
     if(sqlite3_step(stmt2) == SQLITE_ROW)
+    {
+      // other images exist with this name, this means we stop the import of this jpeg if jpegs meant to be single only
+      if (dt_conf_get_bool("ui_last/import_use_solitary_jpegs"))
+      {
+        sqlite3_finalize(stmt2);
+        // rewind the previous insert, as obviously there exist other files
+        DT_DEBUG_SQLITE3_PREPARE_V2(dt_database_get(darktable.db), "delete from images where id = ?1", -1, &stmt2, NULL);
+        DT_DEBUG_SQLITE3_BIND_INT(stmt2, 1, id);
+        sqlite3_step(stmt2);
+        sqlite3_finalize(stmt2);
+        g_free(ext);
+        g_free(imgfname);
+        g_free(basename);
+        g_free(sql_pattern);
+        return 0;
+      }
       group_id = sqlite3_column_int(stmt2, 0);
+    }
     else
       group_id = id;
     sqlite3_finalize(stmt2);

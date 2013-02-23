@@ -75,6 +75,7 @@ typedef struct _camera_import_dialog_t
     struct
     {
       GtkWidget *ignore_jpeg;
+      GtkWidget *use_solitary_jpeg;
       GtkWidget *date_override;
       GtkWidget *date_entry;
     } general;
@@ -94,8 +95,13 @@ static void _check_button_callback(GtkWidget *cb, gpointer user_data)
 
   if(cb == cid->settings.general.ignore_jpeg)
   {
-    dt_conf_set_bool("ui_last/import_ignore_jpegs",
-                     gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(cid->settings.general.ignore_jpeg)));
+    gboolean jpegToggle = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(cid->settings.general.ignore_jpeg));
+    dt_conf_set_bool("ui_last/import_ignore_jpegs", jpegToggle);
+    gtk_widget_set_sensitive(cid->settings.general.use_solitary_jpeg, jpegToggle);
+  }
+  else if(cb == cid->settings.general.use_solitary_jpeg)
+  {
+    dt_conf_set_bool("ui_last/import_use_solitary_jpegs", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(cid->settings.general.use_solitary_jpeg)));
   }
   else if(cb == cid->settings.general.date_override)
   {
@@ -274,6 +280,15 @@ static void _camera_import_dialog_new(_camera_import_dialog_t *data)
   g_signal_connect(G_OBJECT(data->settings.general.ignore_jpeg), "clicked",
                    G_CALLBACK(_check_button_callback), data);
 
+  // but be able to import jpegs if it is the only file
+  data->settings.general.use_solitary_jpeg = gtk_check_button_new_with_label(_(" .. only when a corresponding raw, tiff, or similar exists."));
+  g_object_set(data->settings.general.use_solitary_jpeg, "tooltip-text", _("import jpegs if there is no corresponding other file, like raw, tiff, or similar. This can be useful when importing a mixed collection of pictures."), NULL);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(data->settings.general.use_solitary_jpeg), dt_conf_get_bool("ui_last/import_use_solitary_jpegs"));
+  gtk_box_pack_start(GTK_BOX(data->settings.page), data->settings.general.use_solitary_jpeg, FALSE, FALSE, 0);
+  g_signal_connect (G_OBJECT(data->settings.general.use_solitary_jpeg), "clicked",G_CALLBACK (_check_button_callback),data);
+  if (!dt_conf_get_bool("ui_last/import_ignore_jpegs")) gtk_widget_set_sensitive(data->settings.general.use_solitary_jpeg, FALSE);
+
+  // date override
   GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
   data->settings.general.date_override = gtk_check_button_new_with_label(_("override today's date"));
   gtk_box_pack_start(GTK_BOX(hbox), data->settings.general.date_override, FALSE, FALSE, 0);
